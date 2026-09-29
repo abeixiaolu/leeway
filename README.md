@@ -17,7 +17,7 @@ pnpm dev
 
 ## 定时扣款
 
-设置 `CRON_SECRET`，让定时器每天在中国时间 00:05 后调用 `GET /api/cron/recurring`，并携带 `Authorization: Bearer <CRON_SECRET>`。同一固定支出每月只会生成一笔扣款，任务可以重试。用户打开首页时也会补齐已到期的扣款。
+设置 `CRON_SECRET`。部署在 Vercel 时，`vercel.json` 会每天在中国时间 00:05 调用扣款接口；自行托管时，让定时器每天在该时间之后调用 `GET /api/cron/recurring`，并携带 `Authorization: Bearer <CRON_SECRET>`。同一固定支出每月只会生成一笔扣款，任务可以重试。用户打开首页时也会补齐已到期的扣款。
 
 ## 验证
 

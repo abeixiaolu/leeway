@@ -23,8 +23,8 @@ const typeLabel: Record<string, string> = {
 const accountLabel: Record<string, string> = { available: "可用资金", investment: "投资资产", debt: "借贷" };
 const chinaDate = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 type AccountView = { id: string; name: string; type: string; balanceCents: number };
-type RecordView = { id: string; type: string; amountCents: number; note: string | null; date: string; accountId?: string | null; fromAccountId?: string | null; toAccountId?: string | null; incomeType?: string | null; repaymentTransactionId?: string | null };
-type FixedExpenseView = { id: string; name: string; amountCents: number; day: number; active: boolean };
+type RecordView = { id: string; type: string; amountCents: number; note: string | null; date: string; accountId?: string | null; fromAccountId?: string | null; toAccountId?: string | null; incomeType?: string | null; repaymentTransactionId?: string | null; isDebtRepayment?: boolean };
+type FixedExpenseView = { id: string; name: string; amountCents: number; day: number; active: boolean; isDebtRepayment: boolean };
 
 function Field({ label, name, type = "text", defaultValue, min, max, step, required = true, placeholder, children }: {
   label: string; name: string; type?: string; defaultValue?: string | number; min?: string | number; max?: string | number; step?: string; required?: boolean; placeholder?: string; children?: React.ReactNode;
@@ -56,7 +56,7 @@ export default async function Home() {
   const runwayGood = runway !== null && runway >= target;
   const expenseRecords = records.filter(record => record.type === "expense" && record.date.slice(0, 7) === month);
   const otherRecords = records.filter(record => record.type !== "expense");
-  const fixedCharges = records.filter(record => record.type === "fixed_expense");
+  const fixedCharges = records.filter(record => record.type === "fixed_expense" && record.isDebtRepayment);
   const salaryIncomeCents = records.filter(record => record.type === "income" && record.incomeType === "salary" && record.date.slice(0, 7) === month).reduce((sum, record) => sum + record.amountCents, 0);
   const investmentIncomeCents = records.filter(record => record.type === "income" && record.incomeType === "investment" && record.date.slice(0, 7) === month).reduce((sum, record) => sum + record.amountCents, 0);
   const defaultAccount = available.find(account => account.id === data.defaultExpenseAccountId);
@@ -112,8 +112,8 @@ export default async function Home() {
       <section id="planning" className="section" aria-labelledby="planning-title"><div className="section-head"><div><h2 id="planning-title">月度计划与安全距离</h2><p>按本月计划支出估算可用资金能支撑多久</p></div></div>
         <div className="wide-split"><div className="panel"><h3>实际可支撑月数</h3>{overview.plannedSpendingCents === 0 ? <><div className="runway-number">暂无月度支出计划</div><p className="muted-note">设置日常额度或固定支出后即可计算。</p></> : <><div className="runway-number">{runway === null ? "—" : `${runway.toFixed(1)} 个月`}</div><div className="progress-track" aria-label={`安全月数目标 ${target} 个月`}><div className="progress-fill" style={{width:`${Math.min(100,Math.max(0,((runway ?? 0)/target)*100))}%`}} /></div><div className="progress-label"><span>{runwayGood ? "已达到安全目标" : overview.availableCents <= 0 ? "可用资金存在缺口" : `距目标还差 ${Math.max(0,target-(runway ?? 0)).toFixed(1)} 个月`}</span><span>目标 {target} 个月</span></div></>}<div className="stat-line"><span>本月计划支出</span><strong>{money(overview.plannedSpendingCents)}</strong></div><div className="stat-line"><span>本月实际收入</span><strong>{money(overview.monthlyIncomeCents)}</strong></div><div className="stat-line"><span>其中工资收入</span><strong>{money(salaryIncomeCents)}</strong></div><div className="stat-line"><span>其中理财收入</span><strong>{money(investmentIncomeCents)}</strong></div><div className="stat-line"><span>本月实际支出</span><strong>{money(overview.dailySpentCents + overview.fixedSpentCents)}</strong></div><div className="stat-line"><span>其中日常支出</span><strong>{money(overview.dailySpentCents)}</strong></div><div className="stat-line"><span>其中固定支出</span><strong>{money(overview.fixedSpentCents)}</strong></div></div>
           <div className="panel"><h3>调整计划</h3><p className="panel-hint">计划支出 = 本月日常额度 + 启用的固定支出</p><ActionForm action={updateBudgetAction}><div className="form-grid"><Field label="默认每月日常额度（元）" name="defaultAllowance" type="number" min="0" step="0.01" defaultValue={amount(data.monthlyAllowanceCents)} /><Field label="安全月数目标" name="runwayTarget" type="number" min="1" step="1" defaultValue={target} /></div><div className="form-actions"><button type="submit" className="btn">保存默认计划</button></div></ActionForm><details className="quiet-details"><summary>单独调整某个月的日常额度</summary><ActionForm action={updateBudgetAction}><div className="form-grid"><Field label="月份" name="month" type="month" defaultValue={month} /><Field label="该月额度（元）" name="monthAllowance" type="number" min="0" step="0.01" defaultValue={amount(overview.allowanceCents)} /></div><div className="form-actions"><button type="submit" className="btn secondary">保存月度额度</button></div></ActionForm></details></div></div>
-        <div className="split stack-top"><div className="panel"><h3>固定支出</h3>{fixedExpenses.length ? <ul className="record-list">{fixedExpenses.map(item => <li className="record" key={item.id}><div className="record-main"><div className="record-title">{item.name} {!item.active && <span className="pill warn">已停用</span>}</div><div className="record-meta">每月 {item.day} 日 · {item.active ? "自动扣款" : "不再扣款"}</div></div><div className="record-side"><strong className="record-amount">{money(item.amountCents)}</strong><details><summary>编辑</summary><div className="edit-popover"><h4>编辑固定支出</h4><ActionForm action={updateFixedExpenseAction}><input type="hidden" name="id" value={item.id} /><div className="form-grid"><Field label="名称" name="name" defaultValue={item.name} /><Field label="金额（元）" name="amount" type="number" min="0.01" step="0.01" defaultValue={amount(item.amountCents)} /><Field label="每月扣款日" name="day" type="number" min="1" max="31" defaultValue={item.day} /><Field label="状态" name="active" defaultValue={item.active ? "true" : "false"}><option value="true">启用</option><option value="false">停用</option></Field></div><div className="form-actions"><button type="submit" className="btn small">保存修改</button></div></ActionForm><ActionForm action={deleteFixedExpenseAction}><input type="hidden" name="id" value={item.id} /><button type="submit" className="btn danger small delete-button">删除配置</button></ActionForm></div></details></div></li>)}</ul> : <p className="empty">还没有固定支出。</p>}</div>
-          <div className="form-card"><h3>新增固定支出</h3><ActionForm action={createFixedExpenseAction}><div className="form-grid"><Field label="名称" name="name" placeholder="例如：房租、还贷" /><Field label="金额（元）" name="amount" type="number" min="0.01" step="0.01" /><Field label="每月扣款日" name="day" type="number" min="1" max="31" defaultValue="1" /></div><div className="form-actions"><button type="submit" className="btn">添加固定支出</button></div></ActionForm><p className="muted-note">短月没有设定日期时，按当月最后一天扣款。历史扣款不会被之后的配置更改影响。</p></div></div>
+        <div className="split stack-top"><div className="panel"><h3>固定支出</h3>{fixedExpenses.length ? <ul className="record-list">{fixedExpenses.map(item => <li className="record" key={item.id}><div className="record-main"><div className="record-title">{item.name} {item.isDebtRepayment && <span className="pill">借贷还款</span>} {!item.active && <span className="pill warn">已停用</span>}</div><div className="record-meta">每月 {item.day} 日 · {item.active ? "自动扣款" : "不再扣款"}</div></div><div className="record-side"><strong className="record-amount">{money(item.amountCents)}</strong><details><summary>编辑</summary><div className="edit-popover"><h4>编辑固定支出</h4><ActionForm action={updateFixedExpenseAction}><input type="hidden" name="id" value={item.id} /><div className="form-grid"><Field label="名称" name="name" defaultValue={item.name} /><Field label="金额（元）" name="amount" type="number" min="0.01" step="0.01" defaultValue={amount(item.amountCents)} /><Field label="每月扣款日" name="day" type="number" min="1" max="31" defaultValue={item.day} /><Field label="状态" name="active" defaultValue={item.active ? "true" : "false"}><option value="true">启用</option><option value="false">停用</option></Field></div><label className="check-field"><input type="checkbox" name="isDebtRepayment" defaultChecked={item.isDebtRepayment} />借贷还款（可关联偿还本金）</label><div className="form-actions"><button type="submit" className="btn small">保存修改</button></div></ActionForm><ActionForm action={deleteFixedExpenseAction}><input type="hidden" name="id" value={item.id} /><button type="submit" className="btn danger small delete-button">删除配置</button></ActionForm></div></details></div></li>)}</ul> : <p className="empty">还没有固定支出。</p>}</div>
+          <div className="form-card"><h3>新增固定支出</h3><ActionForm action={createFixedExpenseAction}><div className="form-grid"><Field label="名称" name="name" placeholder="例如：房租、还贷" /><Field label="金额（元）" name="amount" type="number" min="0.01" step="0.01" /><Field label="每月扣款日" name="day" type="number" min="1" max="31" defaultValue="1" /></div><label className="check-field"><input type="checkbox" name="isDebtRepayment" />借贷还款（可关联偿还本金）</label><div className="form-actions"><button type="submit" className="btn">添加固定支出</button></div></ActionForm><p className="muted-note">短月没有设定日期时，按当月最后一天扣款。历史扣款不会被之后的配置更改影响。</p></div></div>
       </section>
     </main>
   </div>;
@@ -121,7 +121,81 @@ export default async function Home() {
 
 function RecordRow({ record, accounts }: { record: RecordView; accounts: AccountView[] }) {
   const accountName = (id?: string | null) => accounts.find(account => account.id === id)?.name ?? "账户";
-  const title = record.type === "income" ? `${record.incomeType === "salary" ? "工资收入" : "理财收入"}${record.note ? ` · ${record.note}` : ""}` : record.type === "transfer" ? `${accountName(record.fromAccountId)} → ${accountName(record.toAccountId)}` : record.note || typeLabel[record.type] || "记录";
+  const title = record.type === "income"
+    ? `${record.incomeType === "salary" ? "工资收入" : "理财收入"}${record.note ? ` · ${record.note}` : ""}`
+    : record.type === "transfer"
+      ? `${accountName(record.fromAccountId)} → ${accountName(record.toAccountId)}`
+      : record.note || typeLabel[record.type] || "记录";
+  const prefix = record.type === "expense" || record.type === "fixed_expense" || record.amountCents < 0
+    ? "−"
+    : record.type === "income" || record.type === "value_change" ? "+" : "";
+
+  return (
+    <li className="record">
+      <div className="record-main">
+        <div className="record-title">{title}</div>
+        <div className="record-meta">
+          {record.date} · {typeLabel[record.type] ?? record.type}
+          {record.accountId ? ` · ${accountName(record.accountId)}` : ""}
+        </div>
+      </div>
+      <div className="record-side">
+        <strong className={`record-amount ${prefix === "−" ? "negative" : ""}`}>
+          {prefix}{money(Math.abs(record.amountCents))}
+        </strong>
+        {record.type !== "fixed_expense" && <RecordEditor record={record} accounts={accounts} />}
+      </div>
+    </li>
+  );
+}
+
+function RecordEditor({ record, accounts }: { record: RecordView; accounts: AccountView[] }) {
   const assetAccounts = accounts.filter(account => account.type !== "debt");
-  return <li className="record"><div className="record-main"><div className="record-title">{title}</div><div className="record-meta">{record.date} · {typeLabel[record.type] ?? record.type}{record.accountId ? ` · ${accountName(record.accountId)}` : ""}</div></div><div className="record-side"><strong className={`record-amount ${record.type === "expense" || record.type === "fixed_expense" || record.amountCents < 0 ? "negative" : ""}`}>{record.type === "expense" || record.type === "fixed_expense" || record.amountCents < 0 ? "−" : record.type === "income" || record.type === "value_change" ? "+" : ""}{money(Math.abs(record.amountCents))}</strong>{record.type !== "fixed_expense" && <details><summary>编辑</summary><div className="edit-popover"><h4>修改记录</h4><ActionForm action={updateRecordAction}><input type="hidden" name="id" value={record.id} /><input type="hidden" name="type" value={record.type} />{record.repaymentTransactionId && <input type="hidden" name="repaymentTransactionId" value={record.repaymentTransactionId} />}<div className="form-grid"><Field label="金额（元）" name="amount" type="number" step="0.01" min={record.type === "value_change" ? undefined : "0.01"} defaultValue={amount(record.amountCents)} /><Field label="日期" name="date" type="date" defaultValue={record.date} max={chinaDate()} />{record.type === "income" && <><Field label="收入类型" name="incomeType" defaultValue={record.incomeType ?? "salary"}><option value="salary">工资收入</option><option value="investment">理财收入</option></Field><Field label="到账账户" name="accountId" defaultValue={record.accountId ?? ""}><AccountOptions accounts={assetAccounts} /></Field></>}{record.type === "transfer" && <><Field label="转出账户" name="fromAccountId" defaultValue={record.fromAccountId ?? ""}><AccountOptions accounts={assetAccounts} /></Field><Field label="转入账户" name="toAccountId" defaultValue={record.toAccountId ?? ""}><AccountOptions accounts={assetAccounts} /></Field></>}{(record.type === "value_change" || record.type === "principal") && <Field label={record.type === "principal" ? "借贷账户" : "投资账户"} name="accountId" defaultValue={record.accountId ?? ""}>{accounts.filter(account => account.type === (record.type === "principal" ? "debt" : "investment")).map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</Field>}<div className="wide"><Field label="备注" name="note" defaultValue={record.note ?? ""} required={record.type === "expense"} /></div></div><div className="form-actions"><button type="submit" className="btn small">保存修改</button></div></ActionForm><ActionForm action={deleteRecordAction}><input type="hidden" name="id" value={record.id} /><button type="submit" className="btn danger small delete-button">删除这笔记录</button></ActionForm></div></details>}</div></li>;
+  const relevantAccounts = accounts.filter(account => account.type === (record.type === "principal" ? "debt" : "investment"));
+
+  return (
+    <details>
+      <summary>编辑</summary>
+      <div className="edit-popover">
+        <h4>修改记录</h4>
+        <ActionForm action={updateRecordAction}>
+          <input type="hidden" name="id" value={record.id} />
+          <input type="hidden" name="type" value={record.type} />
+          {record.repaymentTransactionId && <input type="hidden" name="repaymentTransactionId" value={record.repaymentTransactionId} />}
+          <div className="form-grid">
+            <Field label="金额（元）" name="amount" type="number" step="0.01" min={record.type === "value_change" ? undefined : "0.01"} defaultValue={amount(record.amountCents)} />
+            <Field label="日期" name="date" type="date" defaultValue={record.date} max={chinaDate()} />
+            {record.type === "income" && <>
+              <Field label="收入类型" name="incomeType" defaultValue={record.incomeType ?? "salary"}>
+                <option value="salary">工资收入</option><option value="investment">理财收入</option>
+              </Field>
+              <Field label="到账账户" name="accountId" defaultValue={record.accountId ?? ""}>
+                <AccountOptions accounts={assetAccounts} />
+              </Field>
+            </>}
+            {record.type === "transfer" && <>
+              <Field label="转出账户" name="fromAccountId" defaultValue={record.fromAccountId ?? ""}>
+                <AccountOptions accounts={assetAccounts} />
+              </Field>
+              <Field label="转入账户" name="toAccountId" defaultValue={record.toAccountId ?? ""}>
+                <AccountOptions accounts={assetAccounts} />
+              </Field>
+            </>}
+            {(record.type === "value_change" || record.type === "principal") &&
+              <Field label={record.type === "principal" ? "借贷账户" : "投资账户"} name="accountId" defaultValue={record.accountId ?? ""}>
+                {relevantAccounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+              </Field>}
+            <div className="wide">
+              <Field label="备注" name="note" defaultValue={record.note ?? ""} required={record.type === "expense"} />
+            </div>
+          </div>
+          <div className="form-actions"><button type="submit" className="btn small">保存修改</button></div>
+        </ActionForm>
+        <ActionForm action={deleteRecordAction}>
+          <input type="hidden" name="id" value={record.id} />
+          <button type="submit" className="btn danger small delete-button">删除这笔记录</button>
+        </ActionForm>
+      </div>
+    </details>
+  );
 }

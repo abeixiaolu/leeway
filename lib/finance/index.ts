@@ -149,7 +149,7 @@ async function validatedRecord(userId: string, input: RecordInput, client: typeo
   if (input.type === 'principal') {
     if (!input.repaymentTransactionId) throw new Error('请选择对应的固定还款')
     const repayment = await client.transaction.findFirst({ where: { id: input.repaymentTransactionId, userId, type: 'FIXED_EXPENSE' } })
-    if (!repayment || monthOf(repayment.occurredAt) !== input.date.slice(0, 7)) throw new Error('本金记录必须对应同月固定还款')
+    if (!repayment || !repayment.isDebtRepayment || monthOf(repayment.occurredAt) !== input.date.slice(0, 7)) throw new Error('本金记录必须对应同月借贷还款')
     repaymentTransactionId = repayment.id
     const existingPrincipal = await client.transaction.aggregate({ where: { userId, type: 'DEBT_PRINCIPAL', repaymentTransactionId, ...(excludeRecordId ? { id: { not: excludeRecordId } } : {}) }, _sum: { amountCents: true } })
     if ((existingPrincipal._sum.amountCents ?? 0n) + input.amountCents > repayment.amountCents) throw new Error('偿还本金不能超过该笔还款')
@@ -223,6 +223,7 @@ export async function materializeRecurringCharges(userId: string, now = new Date
           userId, type: 'FIXED_EXPENSE', amountCents: expense.amountCents,
           occurredAt: due, note: expense.name, accountId: user.defaultExpenseAccountId,
           fixedExpenseId: expense.id, fixedMonth: monthString(year, month),
+          isDebtRepayment: expense.isDebtRepayment,
         }], skipDuplicates: true })
       }
       month += 1
@@ -231,20 +232,20 @@ export async function materializeRecurringCharges(userId: string, now = new Date
   }
 }
 
-export async function createFixedExpense(userId: string, input: { name: string; amountCents: bigint; day: number }) {
+export async function createFixedExpense(userId: string, input: { name: string; amountCents: bigint; day: number; isDebtRepayment?: boolean }) {
   requirePositive(input.amountCents)
   if (!Number.isInteger(input.day) || input.day < 1 || input.day > 31) throw new Error('扣款日需为 1–31')
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } })
   if (!user.defaultExpenseAccountId) throw new Error('请先设置默认消费账户')
-  return (await db.fixedExpense.create({ data: { userId, name: cleanName(input.name), amountCents: input.amountCents, dayOfMonth: input.day, active: true } })).id
+  return (await db.fixedExpense.create({ data: { userId, name: cleanName(input.name), amountCents: input.amountCents, dayOfMonth: input.day, isDebtRepayment: input.isDebtRepayment ?? false, active: true } })).id
 }
 
-export async function updateFixedExpense(userId: string, id: string, input: { name: string; amountCents: bigint; day: number; active: boolean }) {
+export async function updateFixedExpense(userId: string, id: string, input: { name: string; amountCents: bigint; day: number; active: boolean; isDebtRepayment?: boolean }) {
   await materializeRecurringCharges(userId)
   requirePositive(input.amountCents)
   if (!Number.isInteger(input.day) || input.day < 1 || input.day > 31) throw new Error('扣款日需为 1–31')
   if (input.active && !(await db.user.findUniqueOrThrow({ where: { id: userId } })).defaultExpenseAccountId) throw new Error('请先设置默认消费账户')
-  const result = await db.fixedExpense.updateMany({ where: { id, userId }, data: { name: cleanName(input.name), amountCents: input.amountCents, dayOfMonth: input.day, active: input.active } })
+  const result = await db.fixedExpense.updateMany({ where: { id, userId }, data: { name: cleanName(input.name), amountCents: input.amountCents, dayOfMonth: input.day, ...(input.isDebtRepayment !== undefined ? { isDebtRepayment: input.isDebtRepayment } : {}), active: input.active } })
   if (!result.count) throw new Error('固定支出不存在')
 }
 
@@ -272,6 +273,22 @@ export async function updateBudget(userId: string, input: { defaultAllowanceCent
   })
 }
 
+function displayRecordType(type: TransactionType) {
+  switch (type) {
+    case 'DAILY_EXPENSE': return 'expense'
+    case 'FIXED_EXPENSE': return 'fixed_expense'
+    case 'SALARY_INCOME':
+    case 'INVESTMENT_INCOME': return 'income'
+    case 'INVESTMENT_CHANGE': return 'value_change'
+    case 'TRANSFER': return 'transfer'
+    case 'DEBT_PRINCIPAL': return 'principal'
+    default: {
+      const exhaustive: never = type
+      throw new Error(`Unknown record type: ${exhaustive}`)
+    }
+  }
+}
+
 export async function getDashboard(userId: string, now = new Date()) {
   await materializeRecurringCharges(userId, now)
   const month = monthString(chinaParts(now).year, chinaParts(now).month)
@@ -284,11 +301,12 @@ export async function getDashboard(userId: string, now = new Date()) {
   const accounts = ledger.accounts.map(account => ({ id: account.id, name: account.name, type: account.type.toLowerCase() as AccountKind, balanceCents: cents(ledger.balances.get(account.id) ?? 0n) }))
   const records = ledger.records.sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime()).map(record => ({
     id: record.id,
-    type: record.type === 'DAILY_EXPENSE' ? 'expense' : record.type === 'FIXED_EXPENSE' ? 'fixed_expense' : record.type === 'SALARY_INCOME' || record.type === 'INVESTMENT_INCOME' ? 'income' : record.type === 'INVESTMENT_CHANGE' ? 'value_change' : record.type === 'TRANSFER' ? 'transfer' : 'principal',
+    type: displayRecordType(record.type),
     amountCents: cents(record.amountCents), note: record.note ?? '', date: chinaDate(record.occurredAt),
     accountId: record.accountId, fromAccountId: record.accountId, toAccountId: record.toAccountId,
     incomeType: record.type === 'INVESTMENT_INCOME' ? 'investment' : record.type === 'SALARY_INCOME' ? 'salary' : null,
     repaymentTransactionId: record.repaymentTransactionId,
+    isDebtRepayment: record.isDebtRepayment,
   }))
   let available = 0n, investment = 0n, debt = 0n
   for (const account of ledger.accounts) {
@@ -309,7 +327,7 @@ export async function getDashboard(userId: string, now = new Date()) {
   const runwayMonths = planned === 0n ? null : available <= 0n ? 0 : Number(available) / Number(planned)
   return {
     accounts, records,
-    fixedExpenses: fixedExpenses.map(expense => ({ id: expense.id, name: expense.name, amountCents: cents(expense.amountCents), day: expense.dayOfMonth, active: expense.active })),
+    fixedExpenses: fixedExpenses.map(expense => ({ id: expense.id, name: expense.name, amountCents: cents(expense.amountCents), day: expense.dayOfMonth, active: expense.active, isDebtRepayment: expense.isDebtRepayment })),
     defaultExpenseAccountId: user.defaultExpenseAccountId,
     monthlyAllowanceCents: cents(user.monthlyAllowanceCents), defaultAllowanceCents: cents(user.monthlyAllowanceCents), runwayTargetMonths: user.safetyMonthsTarget, currentMonth: month,
     overview: {

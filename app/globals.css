@@ -2,7 +2,6 @@
 
 :root{--ink:#18312d;--muted:#66736e;--line:#dfe5dd;--paper:#f5f7f1;--surface:#fff;--green:#195d49;--green-soft:#e8f2e9;--orange:#a74c30;--orange-soft:#fff0e8}
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:Arial,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.55}
 button,input,select{font:inherit}
 button{cursor:pointer}
@@ -29,3 +28,7 @@ a{color:inherit;text-decoration:none}
 @media(max-width:760px){.side-foot{display:block;border:0;padding:0}.side-foot strong,.side-foot{font-size:0}.logout-button{position:absolute;top:12px;right:18px;margin:0;font-size:11px}}
 .action-fieldset{border:0;padding:0;margin:0;min-width:0}.action-fieldset:disabled{opacity:.7;cursor:wait}.action-fieldset:disabled button{cursor:wait}
 .stack-top{margin-top:12px}.delete-button{margin-top:9px}
+.check-field{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#456058;margin-top:12px}.check-field input{width:17px;height:17px;accent-color:var(--green)}
+@media(max-width:760px){.nav{scrollbar-width:none}.nav::-webkit-scrollbar{display:none}.main{display:flex;flex-direction:column}.topbar{order:0}#daily{order:1}#overview{order:2}#accounts{order:3}#records{order:4}#planning{order:5}}
+.section-head .pill{white-space:nowrap;flex-shrink:0}
+@media(max-width:1000px){.focus-grid,.wide-split{grid-template-columns:1fr}}

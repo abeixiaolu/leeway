@@ -91,7 +91,7 @@ test('a short-month fixed charge is posted once and may make cash negative', asy
 test('debt principal reduces only debt and cannot exceed the outstanding balance', async () => {
   await createAccount(userId, { name: '现金', type: 'available', initialBalanceCents: 100_00n })
   const debt = await createAccount(userId, { name: '借款', type: 'debt', initialBalanceCents: 80_00n })
-  const expenseId = await createFixedExpense(userId, { name: '月供', amountCents: 20_00n, day: 1 })
+  const expenseId = await createFixedExpense(userId, { name: '月供', amountCents: 20_00n, day: 1, isDebtRepayment: true })
   await db.fixedExpense.update({ where: { id: expenseId }, data: { createdAt: new Date('2026-09-01T00:00:00+08:00'), updatedAt: new Date('2026-09-01T00:00:00+08:00') } })
   const now = new Date('2026-09-03T12:00:00+08:00')
   await materializeRecurringCharges(userId, now)
@@ -172,4 +172,29 @@ test('editing a fixed expense keeps the old charge and applies the new amount ne
     ['2026-09', 10_00n, '房租'],
     ['2026-10', 20_00n, '新房租'],
   ])
+})
+
+test('principal requires a snapshotted debt repayment, not rent', async () => {
+  await createAccount(userId, { name: '现金', type: 'available', initialBalanceCents: 100_00n })
+  const debt = await createAccount(userId, { name: '借款', type: 'debt', initialBalanceCents: 80_00n })
+  const rentId = await createFixedExpense(userId, { name: '房租', amountCents: 30_00n, day: 1 })
+  const loanId = await createFixedExpense(userId, { name: '月供', amountCents: 20_00n, day: 1, isDebtRepayment: true })
+  const start = new Date('2026-09-01T00:00:00+08:00')
+  await db.fixedExpense.updateMany({ where: { id: { in: [rentId, loanId] } }, data: { createdAt: start, updatedAt: start } })
+  await materializeRecurringCharges(userId, new Date('2026-09-03T12:00:00+08:00'))
+  const rent = await db.transaction.findFirstOrThrow({ where: { userId, fixedExpenseId: rentId } })
+  const loan = await db.transaction.findFirstOrThrow({ where: { userId, fixedExpenseId: loanId } })
+  assert.equal(rent.isDebtRepayment, false)
+  assert.equal(loan.isDebtRepayment, true)
+  await updateFixedExpense(userId, loanId, { name: '月供', amountCents: 20_00n, day: 1, active: true, isDebtRepayment: false })
+  assert.equal((await db.transaction.findUniqueOrThrow({ where: { id: loan.id } })).isDebtRepayment, true)
+  await assert.rejects(createRecord(userId, {
+    type: 'principal', accountId: debt, repaymentTransactionId: rent.id,
+    amountCents: 10_00n, date: '2026-09-01',
+  }))
+  await createRecord(userId, {
+    type: 'principal', accountId: debt, repaymentTransactionId: loan.id,
+    amountCents: 10_00n, date: '2026-09-01',
+  })
+  assert.equal((await getDashboard(userId, new Date('2026-09-03T12:00:00+08:00'))).overview.debtCents, 70_00)
 })

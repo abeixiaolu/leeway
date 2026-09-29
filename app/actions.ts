@@ -75,10 +75,10 @@ export async function deleteRecordAction(form: FormData): Promise<Result> {
   return run(userId => deleteRecord(userId, field(form, 'id')))
 }
 export async function createFixedExpenseAction(form: FormData): Promise<Result> {
-  return run(userId => createFixedExpense(userId, { name: field(form, 'name'), amountCents: money(form, 'amount'), day: integer(form, 'day') }))
+  return run(userId => createFixedExpense(userId, { name: field(form, 'name'), amountCents: money(form, 'amount'), day: integer(form, 'day'), isDebtRepayment: form.get('isDebtRepayment') === 'on' }))
 }
 export async function updateFixedExpenseAction(form: FormData): Promise<Result> {
-  return run(userId => updateFixedExpense(userId, field(form, 'id'), { name: field(form, 'name'), amountCents: money(form, 'amount'), day: integer(form, 'day'), active: field(form, 'active') === 'true' }))
+  return run(userId => updateFixedExpense(userId, field(form, 'id'), { name: field(form, 'name'), amountCents: money(form, 'amount'), day: integer(form, 'day'), active: field(form, 'active') === 'true', isDebtRepayment: form.get('isDebtRepayment') === 'on' }))
 }
 export async function deleteFixedExpenseAction(form: FormData): Promise<Result> {
   return run(userId => deleteFixedExpense(userId, field(form, 'id')))
