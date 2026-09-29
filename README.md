@@ -26,14 +26,14 @@ docker compose up -d --build
 docker compose logs -f app
 ```
 
-建议用 `openssl rand -hex 32` 分别生成数据库密码和定时任务密钥。数据库只在 Compose 网络内开放；应用只监听服务器的 `127.0.0.1:3000`。首次启动会自动执行数据库迁移。确认 `http://127.0.0.1:3000` 可访问后，用服务器现有的 Nginx 或其他反向代理将域名转发到这个地址，并为域名配置 HTTPS。生产环境的登录 Cookie 需要 HTTPS。
+建议用 `openssl rand -hex 32` 分别生成数据库密码和定时任务密钥。数据库只在 Compose 网络内开放；应用默认只监听服务器的 `127.0.0.1:3001`，容器内部仍使用 3000 端口。如 3001 也被占用，可运行 `LEEWAY_PORT=3002 docker compose up -d --build` 改用 3002。首次启动会自动执行数据库迁移。确认 `http://127.0.0.1:3001` 可访问后，用服务器现有的 Nginx 或其他反向代理将域名转发到这个地址，并为域名配置 HTTPS。生产环境的登录 Cookie 需要 HTTPS。
 
 更新项目代码后执行 `docker compose up -d --build`。数据保存在 `postgres_data` 卷中；请定期备份数据库，不要使用 `docker compose down -v` 删除数据卷。
 
-自行托管的每日扣款任务可以放在服务器的 crontab 中。服务器使用中国时区时，设置每天 00:05 执行；若服务器使用 UTC，设置每天 16:05 执行。请求地址为 `http://127.0.0.1:3000/api/cron/recurring`，请求头为 `Authorization: Bearer <CRON_SECRET>`。例如：
+自行托管的每日扣款任务可以放在服务器的 crontab 中。服务器使用中国时区时，设置每天 00:05 执行；若服务器使用 UTC，设置每天 16:05 执行。请求地址默认为 `http://127.0.0.1:3001/api/cron/recurring`，请求头为 `Authorization: Bearer <CRON_SECRET>`。例如：
 
 ```cron
-5 16 * * * curl --fail --silent --show-error -H 'Authorization: Bearer 这里填写CRON_SECRET' http://127.0.0.1:3000/api/cron/recurring >/dev/null
+5 16 * * * curl --fail --silent --show-error -H 'Authorization: Bearer 这里填写CRON_SECRET' http://127.0.0.1:3001/api/cron/recurring >/dev/null
 ```
 
 上例适用于服务器的 crontab 使用 UTC 的情况。任务可重试，同一固定支出每月只会生成一笔扣款。
