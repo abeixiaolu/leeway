@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      String             @id @default(cuid())
+  nickname                String             @unique
+  nicknameKey             String             @unique
+  passwordHash            String
+  defaultExpenseAccountId String?
+  monthlyAllowanceCents   BigInt             @default(0)
+  safetyMonthsTarget      Int                @default(6)
+  createdAt               DateTime           @default(now())
+  accounts                Account[]
+  transactions            Transaction[]
+  fixedExpenses           FixedExpense[]
+  monthlyAllowances       MonthlyAllowance[]
+  sessions                Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+enum AccountType {
+  AVAILABLE
+  INVESTMENT
+  DEBT
+}
+
+model Account {
+  id                  String        @id @default(cuid())
+  userId              String
+  name                String
+  type                AccountType
+  initialBalanceCents BigInt
+  createdAt           DateTime      @default(now())
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions        Transaction[] @relation("TransactionAccount")
+  incomingTransfers   Transaction[] @relation("TransactionToAccount")
+
+  @@index([userId, type])
+}
+
+enum TransactionType {
+  DAILY_EXPENSE
+  FIXED_EXPENSE
+  SALARY_INCOME
+  INVESTMENT_INCOME
+  INVESTMENT_CHANGE
+  TRANSFER
+  DEBT_PRINCIPAL
+}
+
+model Transaction {
+  id                       String           @id @default(cuid())
+  userId                   String
+  type                     TransactionType
+  amountCents              BigInt
+  occurredAt               DateTime
+  note                     String?
+  accountId                String?
+  toAccountId              String?
+  fixedExpenseId           String?
+  fixedMonth               String?
+  repaymentTransactionId   String?
+  requestId                String?
+  createdAt                DateTime         @default(now())
+  user                     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account                  Account?         @relation("TransactionAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  toAccount                Account?         @relation("TransactionToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
+  fixedExpense             FixedExpense?    @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
+  repaymentTransaction     Transaction?     @relation("Repayment", fields: [repaymentTransactionId], references: [id], onDelete: SetNull)
+  principalRepayments      Transaction[]    @relation("Repayment")
+
+  @@unique([fixedExpenseId, fixedMonth])
+  @@unique([userId, requestId])
+  @@index([userId, occurredAt])
+  @@index([userId, accountId])
+}
+
+model MonthlyAllowance {
+  id          String   @id @default(cuid())
+  userId      String
+  month       String
+  amountCents BigInt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month])
+}
+
+model FixedExpense {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String
+  amountCents BigInt
+  dayOfMonth  Int
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId, active])
+}

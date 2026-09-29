@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Leeway · 个人财务
 
-## Getting Started
+一个以人民币记账的私人财务空间。记录可用资金、投资、借贷、日常支出与固定支出，并按中国时间计算月度计划和安全月数。
 
-First, run the development server:
+## 本地运行
+
+需要 Node.js 20+、pnpm 和 PostgreSQL。复制 `.env.example` 为 `.env.local`，填写 `DATABASE_URL`。首次安装和建库：
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+pnpm db:generate
+pnpm exec prisma migrate deploy
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 [http://localhost:3000](http://localhost:3000)，注册昵称和私人密码。首版没有密码找回，请妥善保存密码。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 定时扣款
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+设置 `CRON_SECRET`，让定时器每天在中国时间 00:05 后调用 `GET /api/cron/recurring`，并携带 `Authorization: Bearer <CRON_SECRET>`。同一固定支出每月只会生成一笔扣款，任务可以重试。用户打开首页时也会补齐已到期的扣款。
 
-## Learn More
+## 验证
 
-To learn more about Next.js, take a look at the following resources:
+测试使用单独的 PostgreSQL 数据库。将测试库的 `DATABASE_URL` 写入 `.env.local` 后运行：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm test
+pnpm exec tsc --noEmit
+pnpm lint
+pnpm build
+```
