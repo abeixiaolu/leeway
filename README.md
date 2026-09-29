@@ -30,6 +30,8 @@ docker compose logs -f app
 
 更新项目代码后执行 `docker compose up -d --build`。数据保存在 `postgres_data` 卷中；请定期备份数据库，不要使用 `docker compose down -v` 删除数据卷。
 
+Docker 构建默认从 npmmirror 下载 pnpm 和项目依赖。如果需要改回官方 npm 源，可运行 `docker compose build --build-arg NPM_REGISTRY=https://registry.npmjs.org app`，随后运行 `docker compose up -d`。
+
 自行托管的每日扣款任务可以放在服务器的 crontab 中。服务器使用中国时区时，设置每天 00:05 执行；若服务器使用 UTC，设置每天 16:05 执行。请求地址默认为 `http://127.0.0.1:3001/api/cron/recurring`，请求头为 `Authorization: Bearer <CRON_SECRET>`。例如：
 
 ```cron
